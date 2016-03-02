@@ -1,0 +1,190 @@
+GKE in Production at Honest Dollar
+what we learned, why we would do it again
+
+Ward Harold
+Architect, Infrastructure
+Honest Dollar
+
+wkharold@honestdollar.com
+@wkharold
+
+* Agenda
+- Background
+- Architecture
+- Lessons Learned
+- Wish List
+- Questions
+
+* Background
+
+[[http://www.honestdollar.com][Honest Dollar]]
+
+- local FinTech startup
+- small team, no legacy
+
+Team Expertise
+
+- distributed systems/systems management
+- financial services
+- devops
+
+Goals
+
+- availability
+- scale
+
+* Architecture
+
+.image ThumbnailArchitecture.svg 400 _
+
+- Web/API/Financial µServices in go
+- Cassandra/Redis for persistence
+- Six node GKE production cluster
+
+* Lessons Learned
+
+* One cluster can be enough
+
+.image SeparateClusters.svg 150 _
+
+separate clusters for each environment
+
+.image OneCluster.svg 150 _
+
+separate namespaces for each environment
+
+* One cluster can be enough
+
+    apiVersion: v1
+    kind: List
+    items: 
+     - kind: Namespace
+       apiVersion: v1
+       metadata: 
+         name: dev
+         labels: 
+           name: dev
+     - kind: Namespace
+       apiVersion: v1
+       metadata: 
+         name: prod
+         labels: 
+           name: prod
+     - kind: Namespace
+       apiVersion: v1
+       metadata: 
+         name: qa
+         labels: 
+           name: qa
+
+* One cluster can be enough
+
+Labels give you another dimension
+
+    $ kubectl label node gke-mycluster-123456-node-xyzz env=prod
+    $ kubectl label node gke-mycluster-344567-node-uvwx env=shared
+
+Use node selectors for placement
+
+* YAML files are not enough
+
+k8s resources (services, replication controllers, pods, etc) are specified in YAML (or JSON) files
+
+    apiVersion: v1
+    kind: ReplicationController
+    metadata:
+      labels:
+        name: pause
+      name: pauser
+      namespace: dev
+    spec:
+      replicas: 1
+      selector:
+          name: pauser
+      template:
+        metadata:
+          namespace: dev
+          labels:
+              name: pauser
+        spec:
+          containers:
+            - name: pauser
+              image: gcr.io/google_containers/pause:0.8.0
+
+* YAML files are not enough
+
+We created diretories for each of our environments containing _almost_ identical YAML files
+
+    ├── dev
+    │   ├── api.yaml
+    │   ├── cassandra-controller.yaml
+    │   ├── trader.yaml
+    │   └── web.yaml
+    ├── prod
+    │   ├── api.yaml
+    │   ├── cassandra-controller.yaml
+    │   ├── trader.yaml
+    │   └── web.yaml
+    └── qa
+        ├── api.yaml
+        ├── cassandra-controller.yaml
+        ├── trader.yaml
+        └── web.yaml
+
+Don't do that!
+
+* YAML files are not enough
+
+Options
+
+- a _proto_ puppet module exists
+- the k8s vitess example uses shell scripts and templates
+- we're experimenting with _rakefiles_ and templates
+
+Lessons
+
+- Capture dependencies
+- Launch as much as possible, with the fewest (optimally one) commands possible
+
+    $ cd dev; rake up
+    $ # drink beer
+
+* Containers are necessary, but not sufficient
+
+*Docker* is not the secret sauce
+
+Orchestration *is* the secret sauce
+
+Service, Replication Controllers, and Pods and the bread and butter
+
+Learn _Pod_ _Patterns_ [[https://www.usenix.org/publications/login/oct15/burns][How Kubernetes Changes Operations]]
+
+- sidecar containers
+- ambassor containers
+- adapter containers
+
+Most of your time will be spent on _AppOps_ rather than containery things
+
+Claim: we could switch from *Docker* to *rkt* and nothing outside of how we build container images would change
+
+* More Lessons
+
+Scaling works, if you're stateless
+
+_Log_ _all_ _the_ _things_!
+
+Use k8s persistent volumes and claims for storage
+
+*GCP* networking is worth exploring
+
+Google's *GKE* support team is very supportive
+
+* Wish List
+
+* If only ...
+
+*GKE* used CoreOS as their host image
+
+*GKE* supported [[https://www.projectcalico.org/][Project Calico]] networking
+
+* Questions
